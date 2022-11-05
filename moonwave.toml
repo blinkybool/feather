@@ -30,6 +30,6 @@ copyright = "Copyright © 2022 Billy Snikkers. Built with Moonwave and Docusauru
 # label = "example"
 # href = "https://example.com/"
 
-[home]
-enabled = true
+# [home]
+# enabled = true
 # includeReadme = true
