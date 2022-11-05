@@ -1,0 +1,1 @@
+"use strict";(self.webpackChunkdocs=self.webpackChunkdocs||[]).push([[353],{63891:e=>{e.exports=JSON.parse('{"sourceUrl":"https://github.com/blinkybool/feather/blob/main","baseUrl":"/feather/","classOrder":[],"apiCategories":[]}')}}]);
