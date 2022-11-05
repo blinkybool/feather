@@ -1,0 +1,20 @@
+{
+  "name": "feather",
+  "tree": {
+    "$className": "DataModel",
+
+    "ReplicatedStorage": {
+      "Feather": {
+        "$path": "lib",
+        
+        
+        "Test": {
+          "$path": "test"
+          
+  
+        }
+      }
+
+    }
+  }
+}
