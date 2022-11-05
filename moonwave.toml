@@ -1,5 +1,5 @@
-title = "Feather"  # From Git
-gitRepoUrl = "https://github.com/blinkybool/feather" # From Git
+# title = "Feather"  # From Git
+# gitRepoUrl = "https://github.com/blinkybool/feather" # From Git
 
 # gitSourceBranch = "master"
 # changelog = true
@@ -15,7 +15,7 @@ gitRepoUrl = "https://github.com/blinkybool/feather" # From Git
 # projectName = "MyProjectName"
 # url = "https://AuthorName.github.io"
 # baseUrl = "/MyProjectName"
-tagline = "Featherweight declarative instance manager"
+# tagline = "Featherweight declarative instance manager"
 
 # [navbar]
 # hideableSidebar = true
@@ -31,6 +31,6 @@ copyright = "Copyright © 2022 Billy Snikkers. Built with Moonwave and Docusauru
 # label = "example"
 # href = "https://example.com/"
 
-[home]
-enabled = true
-includeReadme = true
+# [home]
+# enabled = true
+# includeReadme = true
