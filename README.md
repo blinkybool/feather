@@ -18,4 +18,4 @@ The tradeoff is that we can no longer detect which props need to be updated in h
 
 * [sine-pixel](https://github.com/blinkybool/feather/blob/main/test/pringle.story.lua) ![sine-pixel.story](https://i.imgur.com/2Z9wIAb.gif)
 
-* [pringle](https://github.com/blinkybool/feather/blob/main/test/pringle.story.lua) ![pringle.story](https://i.imgur.com/wd9z6f2.gif)
+<!-- * [pringle](https://github.com/blinkybool/feather/blob/main/test/pringle.story.lua) ![pringle.story](https://i.imgur.com/wd9z6f2.gif) -->
