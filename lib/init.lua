@@ -8,7 +8,7 @@ local Feather = {
 	DeltaChildren = Symbol.named("DeltaChildren"),
 	SubtractChild = Symbol.named("SubtractChild"),
 	HostInitProps = Symbol.named("InitProps"),
-	BulkCFrame = Symbol.named("BulkCFrame")
+	BulkMoveCFrame = Symbol.named("BulkMoveCFrame")
 }
 
 --- @prop Children Symbol
@@ -23,7 +23,7 @@ local Feather = {
 --- @prop HostInitProps Symbol
 --- @within Feather
 
---- @prop BulkCFrame Symbol
+--- @prop BulkMoveCFrame Symbol
 --- @within Feather
 
 --[=[
@@ -159,7 +159,7 @@ function Feather.updateVirtualNode(tree: FeatherTree, virtualNode: FeatherVirtua
 				-- print("Updating:", virtualNode[1]:GetFullName(), key)
 				virtualNode[1][key] = value
 				
-			elseif key == Feather.BulkCFrame then
+			elseif key == Feather.BulkMoveCFrame then
 				
 				table.insert(tree.__bulkMoveParts, virtualNode[1])
 				table.insert(tree.__bulkMoveCFrames, value)

@@ -19,7 +19,7 @@ local function ball(i, curve, origin)
 
 	return e("Part", {
 		
-		[Feather.BulkCFrame] = CFrame.new(curve.Points[i] + origin),
+		[Feather.BulkMoveCFrame] = CFrame.new(curve.Points[i] + origin),
 		Color = curve.Color,
 		Size = Vector3.new(curve.Width, curve.Width, curve.Width),
 		
