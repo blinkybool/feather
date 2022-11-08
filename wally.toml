@@ -3,7 +3,4 @@ name = "blinkybool/feather"
 version = "0.1.0"
 registry = "https://github.com/UpliftGames/wally-index"
 realm = "shared"
-license = "MIT"
-description = "Memory efficient, roact-like library for declaratively creating/updating lots of instances."
-
-[dependencies]
+exclude = ["docs"]

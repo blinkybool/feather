@@ -16,6 +16,21 @@ The key is to not store any host props in the virtual tree, and rely just on the
 
 The tradeoff is that we can no longer detect which props need to be updated in host components, so they must all be updated. Performance is restored by giving function components their old props table, so they can determine which children/props must be updated.
 
+## Installation
+
+Download the [Latest Release](https://github.com/blinkybool/feather/releases/latest) and drag it into Roblox Studio.
+
+or use [wally](https://github.com/UpliftGames/wally)
+
+```toml
+# In wally.toml
+
+[dependencies]
+Feather = "blinkybool/feather@0.1.0"
+```
+
+## Examples
+
 * [sine-pixel](https://github.com/blinkybool/feather/blob/main/test/pringle.story.lua) ![sine-pixel.story](docs/sine-pixel.gif)
 
 * [pringle](https://github.com/blinkybool/feather/blob/main/test/pringle.story.lua) ![pringle.story](docs/pringle.gif)
