@@ -31,6 +31,6 @@ Feather = "blinkybool/feather@0.1.0"
 
 ## Examples
 
-* [sine-pixel](https://github.com/blinkybool/feather/blob/main/test/pringle.story.lua) ![sine-pixel.story](docs/sine-pixel.gif)
+* [sine-pixel](https://github.com/blinkybool/feather/blob/main/test/pringle.story.lua) ![sine-pixel.story](/sine-pixel.gif)
 
-* [pringle](https://github.com/blinkybool/feather/blob/main/test/pringle.story.lua) ![pringle.story](docs/pringle.gif)
+* [pringle](https://github.com/blinkybool/feather/blob/main/test/pringle.story.lua) ![pringle.story](/pringle.gif)
