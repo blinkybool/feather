@@ -1,14 +1,32 @@
-local Symbol = require(script.Symbol)
+--[[
+	From Roact: https://github.com/Roblox/roact/blob/master/src/Symbol.lua
+
+	Symbols have the type 'userdata', but when printed to the console or coerced
+	to a string, the name of the symbol is shown.
+]]
+local function namedSymbol(name)
+	assert(type(name) == "string", "Symbols must be created using a string name!")
+
+	local self = newproxy(true)
+
+	local wrappedName = ("Symbol(%s)"):format(name)
+
+	getmetatable(self).__tostring = function()
+		return wrappedName
+	end
+
+	return self
+end
 
 --- @class Feather
 
 local Feather = {
 	
-	Children = Symbol.named("Children"),
-	DeltaChildren = Symbol.named("DeltaChildren"),
-	SubtractChild = Symbol.named("SubtractChild"),
-	HostInitProps = Symbol.named("InitProps"),
-	BulkMoveCFrame = Symbol.named("BulkMoveCFrame")
+	Children = namedSymbol("Children"),
+	DeltaChildren = namedSymbol("DeltaChildren"),
+	SubtractChild = namedSymbol("SubtractChild"),
+	HostInitProps = namedSymbol("InitProps"),
+	BulkMoveCFrame = namedSymbol("BulkMoveCFrame")
 }
 
 --- @prop Children Symbol
@@ -36,7 +54,7 @@ local Feather = {
 	Optionally this function can also depend on the second argument passed `oldProps`
 	if the component makes use of [Feather.DeltaChildren].
 ]=]
-export type FeatherComponent = string | (props: table, oldProps: table) -> FeatherElement
+export type FeatherComponent = string | (props: {}, oldProps: {}) -> FeatherElement
 
 
 -- --[=[
@@ -46,19 +64,19 @@ export type FeatherComponent = string | (props: table, oldProps: table) -> Feath
 -- ]=]
 export type FeatherElement = {
 	component: FeatherComponent,
-	props: table,
+	props: {},
 }
 
 -- This is intended to mean
 --   [1]: Instance -- hostInstance
 --   [2]: table? -- deltaChildren
 --   [3]: table? -- children
-export type FeatherHostVirtualNode = {Instance | table? | table?}
+export type FeatherHostVirtualNode = {Instance | {}? | {}?}
 
 export type FeatherFunctionVirtualNode = {
-	result: FeatherVirtualNode,
-	component: (props: table, oldProps: table) -> FeatherElement,
-	props: table,
+	result: FeatherVirtualNode?,
+	component: (props: {}, oldProps: {}) -> FeatherElement,
+	props: {},
 }
 
 export type FeatherVirtualNode = FeatherHostVirtualNode | FeatherFunctionVirtualNode
@@ -70,7 +88,7 @@ export type FeatherVirtualNode = FeatherHostVirtualNode | FeatherFunctionVirtual
 -- ]=]
 export type FeatherTree = {
 
-	root: FeatherVirtualNode,
+	root: FeatherVirtualNode?,
 	rootParent: Instance,
 	rootKey: string,
 }
@@ -81,7 +99,7 @@ export type FeatherTree = {
 	@return FeatherElement
 ]=]
 
-function Feather.createElement(component: FeatherComponent, props: table): FeatherElement
+function Feather.createElement(component: FeatherComponent, props: {}): FeatherElement
 
 	return {
 
@@ -90,11 +108,35 @@ function Feather.createElement(component: FeatherComponent, props: table): Feath
 	}
 end
 
-function Feather.updateVirtualNode(tree: FeatherTree, virtualNode: FeatherVirtualNode?, element: FeatherElement?, hostParent: Instance, hostKey: string): FeatherVirtualNode?
+local function destroyVirtualNode(virtualNode: any): ()
+	if virtualNode == nil then
+		return
+	end
+
+	if virtualNode[1] then
+		virtualNode[1]:Destroy() -- This means its unsafe to destroy something and then lazyParent
+		table.clear(virtualNode)
+		return
+	end
+
+	if virtualNode.result then
+		destroyVirtualNode(virtualNode.result)
+		table.clear(virtualNode)
+		return
+	end
+end
+
+type FeatherTreeInUpdate = FeatherTree & {
+	__bulkMoveCFrames: {CFrame},
+	__bulkMoveParts: {BasePart},
+	_lazyPairs: {{Instance}}, -- lazy child-parent pairs
+}
+
+local function updateVirtualNode(tree: FeatherTreeInUpdate, virtualNode: FeatherVirtualNode?, element: FeatherElement?, hostParent: Instance, hostKey: string, lazy: boolean): FeatherVirtualNode?
 
 	if not element then
 		
-		Feather.destroyVirtualNode(virtualNode)
+		destroyVirtualNode(virtualNode)
 		return nil
 	end
 	
@@ -111,16 +153,18 @@ function Feather.updateVirtualNode(tree: FeatherTree, virtualNode: FeatherVirtua
 
 		-- Destroy the virtual node if it's not a hostNode
 
-		if not virtualNode or not virtualNode[1] then
+		if not virtualNode or not (virtualNode :: any)[1] then
 
 			if virtualNode then
 				
-				Feather.destroyVirtualNode(virtualNode)
+				destroyVirtualNode(virtualNode)
 			end
 			virtualNode = {}
 		end
 
-		-- For delayed parent-ing
+		local hostVirtualNode: FeatherHostVirtualNode = (virtualNode :: any)
+
+		-- For parenting after props are assigned (unless)
 		local needToParent = false
 		
 		-- WARNING: It is assumed that the instance class does not change
@@ -133,7 +177,7 @@ function Feather.updateVirtualNode(tree: FeatherTree, virtualNode: FeatherVirtua
 		
 		-- Create the instance if it doesn't exist
 		
-		if not virtualNode[1] then
+		if not hostVirtualNode[1] then
 			
 			local instance = Instance.new(element.component)
 			instance.Name = hostKey
@@ -146,52 +190,52 @@ function Feather.updateVirtualNode(tree: FeatherTree, virtualNode: FeatherVirtua
 				end
 			end
 
-			virtualNode[1] = instance
-			needToParent = true
+			hostVirtualNode[1] = instance
+			-- Assign parenting strategy
+			if lazy then
+				table.insert(tree._lazyPairs, {instance, hostParent})
+			else
+				needToParent = true
+			end
 		end
 
+		local hostInstance: Instance = hostVirtualNode[1] :: any
+
 		-- Update all the props
-
 		for key, value in element.props do
-
 			if typeof(key) == "string" then
-				
-				-- print("Updating:", virtualNode[1]:GetFullName(), key)
-				virtualNode[1][key] = value
-				
+				hostInstance[key] = value
 			elseif key == Feather.BulkMoveCFrame then
-				
-				table.insert(tree.__bulkMoveParts, virtualNode[1])
+				table.insert(tree.__bulkMoveParts, hostInstance :: Part)
 				table.insert(tree.__bulkMoveCFrames, value)
 			end
 		end
 
-		-- NOTE: virtualNode[2] is deltaChildren
-		
 		-- Update delta children that have changed (Up to user to ensure correctness)
 		
 		if element.props[Feather.DeltaChildren] then
 			
-			if not virtualNode[2] then
-				
-				virtualNode[2] = {}
+			if not hostVirtualNode[2] then
+				hostVirtualNode[2] = {}
 			end
-			
+			local deltaChildren: {[any]: FeatherVirtualNode?} = hostVirtualNode[2] :: any
+
 			for key, childElementOrRemoveChild in element.props[Feather.DeltaChildren] do
 				
 				if childElementOrRemoveChild == Feather.SubtractChild then
 					
-					Feather.destroyVirtualNode(virtualNode[2][key])
-					virtualNode[2][key] = nil
+					destroyVirtualNode(deltaChildren[key])
+					deltaChildren[key] = nil
 				else
 					
-					virtualNode[2][key] =
-						Feather.updateVirtualNode(
+					deltaChildren[key] =
+						updateVirtualNode(
 							tree,
-							virtualNode[2][key],
+							deltaChildren[key],
 							childElementOrRemoveChild,
-							virtualNode[1],
-							key
+							hostInstance,
+							key,
+							lazy
 						)
 				end
 			end
@@ -199,62 +243,56 @@ function Feather.updateVirtualNode(tree: FeatherTree, virtualNode: FeatherVirtua
 
 		-- If there are no children left, delete the table for memory space
 
-		if virtualNode[2] and not next(virtualNode[2]) then
+		if hostVirtualNode[2] and not next(hostVirtualNode[2] :: any) then
 			
-			virtualNode[2] = nil
+			hostVirtualNode[2] = nil
 		end
 		
 		-- NOTE: virtualNode[3] is children (child virtual nodes)
 
 		-- Remove children that no longer exist in the element
 
-		if virtualNode[3] then
+		if hostVirtualNode[3] then
 
+			local children: {[any]: FeatherVirtualNode?} = hostVirtualNode[3] :: any
 			local removals = {}
 			
-			for key, childVirtualNode in virtualNode[3] do
-				
+			for key, childVirtualNode in children do
 				if not element.props[Feather.Children] or not element.props[Feather.Children][key] then
-					
-					Feather.destroyVirtualNode(childVirtualNode)
+					destroyVirtualNode(childVirtualNode)
 					table.insert(removals, key)
 				end
 			end
 
 			for _, key in ipairs(removals) do
-				
-				virtualNode[3][key] = nil
+				children[key] = nil
 			end
 		end
 
 		-- Create or Update any new children
 
 		if element.props[Feather.Children] then
-	
-			if not virtualNode[3] then
-				
-				virtualNode[3] = {}
+			if not hostVirtualNode[3] then
+				hostVirtualNode[3] = {}
 			end
+			local children: {[any]: FeatherVirtualNode?} = hostVirtualNode[3] :: any
 
 			for key, childElement in element.props[Feather.Children] do
-
-				virtualNode[3][key] = Feather.updateVirtualNode(tree, virtualNode[3][key], childElement, virtualNode[1], key)
+				children[key] = updateVirtualNode(tree, children[key], childElement, hostInstance, key, lazy)
 			end
 		end
 
 		-- If there were no children added, delete the table for memory space
 		-- TODO does this break if the table is numeric and the first index is nil?
 
-		if virtualNode[3] and not next(virtualNode[3]) then
-			
-			virtualNode[3] = nil
+		if hostVirtualNode[3] and not next(hostVirtualNode[3] :: any) then
+			hostVirtualNode[3] = nil
 		end
 		
 		-- Update the parent if necessary (done last for performance)
-		
-		if needToParent then
-			
-			virtualNode[1].Parent = hostParent
+		-- If lazy = true, then needToParent is false and this will be done later
+		if needToParent then 
+			hostInstance.Parent = hostParent
 		end
 
 		return virtualNode
@@ -272,54 +310,56 @@ function Feather.updateVirtualNode(tree: FeatherTree, virtualNode: FeatherVirtua
 
 		-- If the existing component is not a function, destroy the virtual node
 
-		if not virtualNode or typeof(virtualNode.component) ~= "function" then
+		if not virtualNode or typeof((virtualNode :: any).component) ~= "function" then
 			
 			if virtualNode then
 				
-				Feather.destroyVirtualNode(virtualNode)
+				destroyVirtualNode(virtualNode)
 			end
 			virtualNode = {}
 		end
 
+		local functionVirtualNode: FeatherFunctionVirtualNode = virtualNode :: any
+
 		-- If the component function changed, replace node data and update with the new result
 
-		if virtualNode.component ~= element.component then
+		if functionVirtualNode.component ~= element.component then
 			
-			virtualNode.result =
-				Feather.updateVirtualNode(
+			functionVirtualNode.result =
+				updateVirtualNode(
 					tree,
-					virtualNode.result,
-					element.component(element.props, virtualNode.props or {}),
+					functionVirtualNode.result,
+					element.component(element.props, functionVirtualNode.props or {}),
 					hostParent,
-					hostKey)
+					hostKey,
+					lazy)
 
-			virtualNode.component = element.component
-			virtualNode.props = element.props
+			functionVirtualNode.component = element.component
+			functionVirtualNode.props = element.props
 			return virtualNode
 		end
 
 		-- If the component and props are unchanged, shortcut the update
 
-		if virtualNode.props == element.props then
-			
+		if functionVirtualNode.props == element.props then
 			return virtualNode
 		end
 
 		-- If any existing props have been changed/removed, replace props and update with the new result
 
-		for key, prop in virtualNode.props do
+		for key, prop in functionVirtualNode.props do
 			
 			if element.props[key] ~= prop then
-				
-				virtualNode.result =
-					Feather.updateVirtualNode(
+				functionVirtualNode.result =
+					updateVirtualNode(
 						tree,
-						virtualNode.result,
-						element.component(element.props, virtualNode.props or {}),
+						functionVirtualNode.result,
+						element.component(element.props, functionVirtualNode.props or {}),
 						hostParent,
-						hostKey)
+						hostKey,
+						lazy)
 				
-				virtualNode.props = element.props
+				functionVirtualNode.props = element.props
 				return virtualNode
 			end
 		end
@@ -328,17 +368,18 @@ function Feather.updateVirtualNode(tree: FeatherTree, virtualNode: FeatherVirtua
 
 		for key, prop in element.props do
 			
-			if virtualNode.props[key] ~= prop then
+			if functionVirtualNode.props[key] ~= prop then
 				
-				virtualNode.result =
-					Feather.updateVirtualNode(
+				functionVirtualNode.result =
+					updateVirtualNode(
 						tree,
-						virtualNode.result,
-						element.component(element.props, virtualNode.props or {}),
+						functionVirtualNode.result,
+						element.component(element.props, functionVirtualNode.props or {}),
 						hostParent,
-						hostKey)
+						hostKey,
+						lazy)
 				
-				virtualNode.props = element.props
+				functionVirtualNode.props = element.props
 				return virtualNode
 			end
 		end
@@ -352,19 +393,228 @@ function Feather.updateVirtualNode(tree: FeatherTree, virtualNode: FeatherVirtua
 	end
 end
 
-function Feather.destroyVirtualNode(virtualNode: FeatherVirtualNode): ()
+local function update(tree: FeatherTree, element: FeatherElement, lazy: boolean): FeatherTree
+	if Feather.numLazyInstances(tree) > 0 then
+		error("[Feather] Cannot update tree while lazy Instances exist")
+	end
+	
+	-- This is just a type coercion. treeInUpdate is the same table as tree
+	local treeInUpdate: FeatherTreeInUpdate = tree :: any
+	treeInUpdate.__bulkMoveCFrames = {}
+	treeInUpdate.__bulkMoveParts = {}
+	if lazy then
+		treeInUpdate._lazyPairs = {}
+		(treeInUpdate :: any)._lazyIndex = nil
+		(treeInUpdate :: any)._lazySize = nil
+	end
+
+	treeInUpdate.root = updateVirtualNode(treeInUpdate, treeInUpdate.root, element, treeInUpdate.rootParent, treeInUpdate.rootKey, lazy)
+
+	if #treeInUpdate.__bulkMoveCFrames > 0 then
+		workspace:BulkMoveTo(treeInUpdate.__bulkMoveParts, treeInUpdate.__bulkMoveCFrames, Enum.BulkMoveMode.FireCFrameChanged)
+	end
+
+	treeInUpdate.__bulkMoveCFrames = nil :: any
+	treeInUpdate.__bulkMoveParts = nil :: any
+
+	return tree
+end
+
+--[=[
+	@param tree FeatherTree
+	@param element FeatherElement
+
+	@return FeatherTree
+
+	Updates the tree using the new element.
+]=]
+function Feather.update(tree: FeatherTree, element: FeatherElement): FeatherTree
+	update(tree, element, false)
+	return tree
+end
+
+--[=[
+	@param tree FeatherTree
+	@param element FeatherElement
+
+	@return FeatherTree
+
+	Lazily updates the tree using the new element. See Feather.lazyParent for
+	usage.
+]=]
+function Feather.lazyUpdate(tree: FeatherTree, element: FeatherElement): FeatherTree
+	update(tree, element, true)
+	return tree
+end
+
+type LazyTree = FeatherTree & {
+	_lazyPairs: {{Instance}},
+	_lazyIndex: number,
+	_lazySize: number,
+}
+
+--[=[
+	@param tree FeatherTree
+
+	@return number
+	Returns the number of lazyInstances that haven't yet been parented to their
+	intended parent.
+]=]
+function Feather.numLazyInstances(tree: FeatherTree): number
+	local lazyTree: LazyTree = tree :: any
+	if not lazyTree._lazyPairs then
+		return 0
+	end
+
+	return (lazyTree._lazySize or #lazyTree._lazyPairs) - (lazyTree._lazyIndex or 1) + 1
+end
+
+
+--[=[
+	@param tree FeatherTree
+	@param maxToParent number
+
+	@return number
+	Call this after a lazy mount/update to parent at most `maxToParent` many instances
+	to their intended parent. Returns the number parented.
+
+	For example, create a lazy tree with 10,000 instances, then do:
+	```lua
+	RunService.RenderStepped:Connect(function()
+		Feather.lazyParent(tree, 128)
+	end)
+	```
+	to smoothly introduce the tree into the workspace
+]=]
+function Feather.lazyParent(tree: FeatherTree, maxToParent: number): number
+	local lazyTree: LazyTree = tree :: any
+	if lazyTree._lazyPairs == nil then
+		return 0
+	end
+
+	if not lazyTree._lazyIndex then
+		lazyTree._lazyIndex = 1
+		lazyTree._lazySize = #lazyTree._lazyPairs
+	end
+
+	local parented = 0
+	while lazyTree._lazyIndex <= lazyTree._lazySize do
+		if parented >= maxToParent then
+			break
+		end
+		local instance, parent = table.unpack(lazyTree._lazyPairs[lazyTree._lazyIndex])
+		instance.Parent = parent
+		parented += 1
+		lazyTree._lazyIndex += 1
+	end
+
+	if lazyTree._lazyIndex >= lazyTree._lazySize then
+		(lazyTree :: any)._lazyPairs = nil
+		(lazyTree :: any)._lazySize = nil
+		(lazyTree :: any)._lazyIndex = nil
+	end
+
+	return parented
+end
+
+local function slowDestroy(virtualNode: any, maxToDestroy: number): number
+	if virtualNode == nil or maxToDestroy <= 0 then
+		return 0
+	end
 
 	if virtualNode[1] then
-		
-		virtualNode[1]:Destroy()
-		virtualNode[1] = nil
-		return
+		local destroyed = 0
+
+		-- Destroy children and delta-children first
+		for j=2, 3 do
+			if virtualNode[j] then
+				local key, childNode = next(virtualNode[j])
+				while childNode do
+					if destroyed >= maxToDestroy then
+						return destroyed
+					end
+					destroyed += slowDestroy(childNode, maxToDestroy-destroyed)
+					if not next(childNode) then
+						virtualNode[j][key] = nil
+					end
+					key, childNode = next(virtualNode[j])
+				end
+				-- Only reach here if all children were destroyed
+				virtualNode[j] = nil
+			end
+		end
+
+		if destroyed < maxToDestroy then
+			-- This should only happen if all the children are destroyed and there's
+			-- still budget to destroy more
+			virtualNode[1]:Destroy()
+			destroyed += 1
+			table.clear(virtualNode)
+		end
+		return destroyed
+	elseif virtualNode.result then
+		local destroyed = slowDestroy(virtualNode.result, maxToDestroy)
+		-- Clear this virtualNode iff all of it's descendants are destroyed
+		if not next(virtualNode.result) then
+			table.clear(virtualNode)
+		end
+		return destroyed
 	end
 
-	if virtualNode.result then
-		
-		Feather.destroyVirtualNode(virtualNode.result)
-	end
+	return 0
+end
+
+--[=[
+	@type FeatherTreePartiallyDestroyed {root: FeatherVirtualNode}
+	@within Feather
+]=]
+export type FeatherTreePartiallyDestroyed = {
+	root: FeatherVirtualNode
+}
+
+--[=[
+	@param tree
+	@return FeatherTreePartiallyDestroyed
+
+	Returns a version of the tree that can be slow-destroyed, and prevents the
+	original tree from being updated further.
+]=]
+function Feather.surrender(tree: FeatherTree): FeatherTreePartiallyDestroyed
+	local root = tree.root
+	return {
+		root = root,
+	}
+end
+
+--[=[
+	@param tree FeatherTreePartiallyDestroyed
+
+	@return boolean
+	Returns true if the tree has been fully destroyed.
+]=]
+function Feather.destructionFinished(tree: FeatherTreePartiallyDestroyed): boolean
+	return tree.root == nil or next(tree.root) == nil
+end
+
+--[=[
+	@param tree FeatherTreePartiallyDestroyed
+	@param maxToDestroy number
+
+	Perform a partial cleanup of the tree by deleting at most maxToDestroy
+	instances, starting with the leaf instances
+
+	Returns the number destroyed. Use Feather.isSlowDestroyed to determine
+	if cleanup is finished.
+
+	:::warning
+	Do not call this on a regular FeatherTree that may be updated somewhere in
+	your code. Surrender the tree first with Feather.surrender, and pass the result
+	to this function.
+	:::
+]=]
+function Feather.slowDestroy(tree: FeatherTreePartiallyDestroyed, maxToDestroy: number): ()
+	local destroyed = slowDestroy(tree.root, maxToDestroy)
+	return destroyed
 end
 
 --[=[
@@ -389,38 +639,36 @@ function Feather.mount(element: FeatherElement, parent: Instance, key: string): 
 end
 
 --[=[
-	@param tree FeatherTree
 	@param element FeatherElement
+	@param parent Instance
+	@param key string
 
 	@return FeatherTree
 
-	Updates the tree using the new element.
+	Lazily Mounts the element to the parent and names it with the key.
+	The returned FeatherTree should be called with Feather.lazyParent
+	once per frame with a reasonable instance budget until no more
+	lazyInstances need to be rendered.
+	The returned FeatherTree can be passed to [Feather.update] to update the instances.
 ]=]
-function Feather.update(tree: FeatherTree, element: FeatherElement): FeatherTree
+function Feather.lazyMount(element: FeatherElement, parent: Instance, key: string): FeatherTree
 
-	tree.__bulkMoveCFrames = {}
-	tree.__bulkMoveParts = {}
-	
-	tree.root = Feather.updateVirtualNode(tree, tree.root, element, tree.rootParent, tree.rootKey)
+	local tree = {
 
-	if #tree.__bulkMoveCFrames > 0 then
-		
-		workspace:BulkMoveTo(tree.__bulkMoveParts, tree.__bulkMoveCFrames, Enum.BulkMoveMode.FireCFrameChanged)
-	end
+		rootParent = parent,
+		rootKey = key,
+	}
 
-	tree.__bulkMoveCFrames = nil
-	tree.__bulkMoveParts = nil
-
-	return tree
+	return Feather.lazyUpdate(tree, element)
 end
 
 --[=[
 	@param tree FeatherTree
-
+	Destroys the instances and cleans up the tree
 ]=]
 function Feather.unmount(tree: FeatherTree): ()
 	
-	Feather.destroyVirtualNode(tree.root)
+	destroyVirtualNode(tree.root)
 	table.clear(tree)
 end
 
