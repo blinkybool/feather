@@ -5,7 +5,7 @@
 
     "ReplicatedStorage": {
       "Feather": {
-        "$path": "Feather.lua",
+        "$path": "feather.lua",
         
         
         "Test": {
