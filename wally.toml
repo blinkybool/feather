@@ -4,4 +4,4 @@ version = "0.2.0-rc2"
 registry = "https://github.com/UpliftGames/wally-index"
 realm = "shared"
 exclude = ["**"]
-include = ["feather.lua"]
+include = ["feather.lua", "default.project.json", "wally.toml"]
