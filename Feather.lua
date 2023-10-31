@@ -569,7 +569,8 @@ end
 	@within Feather
 ]=]
 export type FeatherTreePartiallyDestroyed = {
-	root: FeatherVirtualNode
+	root: FeatherVirtualNode,
+	rootParent: Instance?
 }
 
 --[=[
@@ -579,10 +580,11 @@ export type FeatherTreePartiallyDestroyed = {
 	Returns a version of the tree that can be slow-destroyed, and prevents the
 	original tree from being updated further.
 ]=]
-function Feather.surrender(tree: FeatherTree): FeatherTreePartiallyDestroyed
+function Feather.surrender(tree: FeatherTree, destroyRootParent: boolean): FeatherTreePartiallyDestroyed
 	local root = tree.root
 	return {
 		root = root,
+		rootParent = if destroyRootParent then tree.rootParent else nil
 	}
 end
 
@@ -593,7 +595,7 @@ end
 	Returns true if the tree has been fully destroyed.
 ]=]
 function Feather.destructionFinished(tree: FeatherTreePartiallyDestroyed): boolean
-	return tree.root == nil or next(tree.root) == nil
+	return (tree.root == nil or next(tree.root) == nil) and tree.rootParent == nil
 end
 
 --[=[
@@ -614,6 +616,12 @@ end
 ]=]
 function Feather.slowDestroy(tree: FeatherTreePartiallyDestroyed, maxToDestroy: number): ()
 	local destroyed = slowDestroy(tree.root, maxToDestroy)
+	if destroyed < maxToDestroy then
+		if tree.rootParent then
+			tree.rootParent:Destroy()
+			tree.rootParent = nil
+		end
+	end
 	return destroyed
 end
 
